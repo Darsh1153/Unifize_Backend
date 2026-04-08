@@ -1,0 +1,167 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StatusMapping {
+  PENDING
+  COMPLETED
+}
+
+enum DefectCategory {
+  FUNCTIONAL_BUGS
+  LOGICAL_BUGS
+  WORKFLOW_BUGS
+  OTHER
+}
+
+model User {
+  id               String                @id @default(cuid())
+  email            String                @unique
+  name             String
+  passwordHash     String
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  ownedProcesses   ProcessTemplate[]     @relation("ProcessDefaultOwner")
+  createdProcesses ProcessTemplate[]     @relation("ProcessCreatedBy")
+  processMembers   ProcessParticipant[]
+  ownedDefects     DefectConversation[]  @relation("DefectOwner")
+  createdDefects   DefectConversation[]  @relation("DefectCreatedBy")
+  defectMembers    DefectParticipant[]
+  ownedTasks       Task[]                @relation("TaskOwner")
+}
+
+model ProcessTemplate {
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  defaultOwnerId      String?
+  createdById         String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  defaultOwner        User?                @relation("ProcessDefaultOwner", fields: [defaultOwnerId], references: [id])
+  createdBy           User                 @relation("ProcessCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  participants        ProcessParticipant[]
+  statuses            ProcessStatus[]
+  fields              ChecklistField[]
+  defects             DefectConversation[]
+}
+
+model ProcessParticipant {
+  id         String          @id @default(cuid())
+  processId  String
+  userId     String
+  process    ProcessTemplate @relation(fields: [processId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([processId, userId])
+}
+
+model ProcessStatus {
+  id         String          @id @default(cuid())
+  processId  String
+  label      String
+  order      Int
+  mapping    StatusMapping
+  process    ProcessTemplate @relation(fields: [processId], references: [id], onDelete: Cascade)
+  defects    DefectConversation[]
+  tasks      Task[]
+
+  @@unique([processId, label])
+  @@unique([processId, order])
+}
+
+model ChecklistField {
+  id             String          @id @default(cuid())
+  processId      String
+  section        String
+  label          String
+  key            String
+  type           String
+  required       Boolean         @default(false)
+  order          Int
+  options        String[]        @default([])
+  linkedProcess  String?
+  allowMultiple  Boolean         @default(false)
+  showStatus     Boolean         @default(false)
+  showOwner      Boolean         @default(false)
+  showDueDate    Boolean         @default(false)
+  process        ProcessTemplate @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@unique([processId, key])
+  @@unique([processId, order])
+}
+
+model Customer {
+  id        String               @id @default(cuid())
+  name      String               @unique
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  defects   DefectConversation[]
+}
+
+model Feature {
+  id        String               @id @default(cuid())
+  name      String               @unique
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  defects   DefectConversation[]
+}
+
+model DefectConversation {
+  id                     String               @id @default(cuid())
+  processId              String
+  title                  String
+  ownerId                String
+  statusId               String
+  dateDefectReported     DateTime
+  customerId             String
+  description            String
+  category               DefectCategory
+  screenshotUrls         String[]             @default([])
+  featureId              String
+  createdById            String
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  process                ProcessTemplate      @relation(fields: [processId], references: [id], onDelete: Cascade)
+  owner                  User                 @relation("DefectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  status                 ProcessStatus        @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  customer               Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  feature                Feature              @relation(fields: [featureId], references: [id], onDelete: Restrict)
+  createdBy              User                 @relation("DefectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  participants           DefectParticipant[]
+  relatedTasks           Task[]
+}
+
+model DefectParticipant {
+  id        String              @id @default(cuid())
+  defectId  String
+  userId    String
+  defect    DefectConversation  @relation(fields: [defectId], references: [id], onDelete: Cascade)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([defectId, userId])
+}
+
+model Task {
+  id         String              @id @default(cuid())
+  defectId   String
+  title      String
+  statusId   String
+  ownerId    String
+  dueDate    DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  defect     DefectConversation  @relation(fields: [defectId], references: [id], onDelete: Cascade)
+  status     ProcessStatus       @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  owner      User                @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+}
